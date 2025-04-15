@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pollination.ai Text Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        .bot-message {
+            background-color: #f1f1f1;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        select {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #000;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .model-info {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
+        .error-message {
+            color: #d32f2f;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .param-controls {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .param-control {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+        .param-control label {
+            display: inline-block;
+            width: 150px;
+        }
+        .param-control input[type="range"] {
+            flex-grow: 1;
+            margin: 0 10px;
+        }
+        .param-control .value-display {
+            width: 50px;
+            text-align: right;
+        }
+        .api-info {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pollination.ai Text Generator</h1>
+    
+    <div class="chat-container">
+        <label for="model-select">Select Model:</label>
+        <select id="model-select" disabled>
+            <option value="">Loading models...</option>
+        </select>
+        <div id="model-description" class="model-info"></div>
+        
+        <div class="param-controls">
+            <h3>Generation Parameters:</h3>
+            <div class="param-control">
+                <label for="temperature">Temperature:</label>
+                <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="0.7">
+                <span id="temp-value" class="value-display">0.7</span>
+            </div>
+            <div class="param-control">
+                <label for="max-length">Max Length:</label>
+                <input type="range" id="max-length" min="20" max="1000" step="10" value="200">
+                <span id="length-value" class="value-display">200</span>
+            </div>
+            <div class="param-control">
+                <label for="top-p">Top-P:</label>
+                <input type="range" id="top-p" min="0.1" max="1.0" step="0.1" value="0.9">
+                <span id="topp-value" class="value-display">0.9</span>
+            </div>
+            <div class="param-control">
+                <label for="repetition">Repetition Penalty:</label>
+                <input type="range" id="repetition" min="1.0" max="2.0" step="0.1" value="1.2">
+                <span id="repetition-value" class="value-display">1.2</span>
+            </div>
+        </div>
+        
+        <div id="error-message" class="error-message"></div>
+        
+        <div class="chat-messages" id="chat-messages"></div>
+        
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Type your prompt..." autocomplete="off" disabled>
+            <button id="send-button" disabled>Generate</button>
+        </div>
+    </div>
+
+    <div class="api-info">
+        <p>Using Pollination.ai Text Generation API</p>
+        <p>Endpoint: POST https://text.pollinations.ai/</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async function() {
+            const chatMessages = document.getElementById('chat-messages');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const modelSelect = document.getElementById('model-select');
+            const modelDescription = document.getElementById('model-description');
+            const errorMessage = document.getElementById('error-message');
+            
+            // Parameter controls
+            const temperature = document.getElementById('temperature');
+            const maxLength = document.getElementById('max-length');
+            const topP = document.getElementById('top-p');
+            const repetition = document.getElementById('repetition');
+            const tempValue = document.getElementById('temp-value');
+            const lengthValue = document.getElementById('length-value');
+            const toppValue = document.getElementById('topp-value');
+            const repetitionValue = document.getElementById('repetition-value');
+            
+            // Update parameter value displays
+            temperature.addEventListener('input', () => tempValue.textContent = temperature.value);
+            maxLength.addEventListener('input', () => lengthValue.textContent = maxLength.value);
+            topP.addEventListener('input', () => toppValue.textContent = topP.value);
+            repetition.addEventListener('input', () => repetitionValue.textContent = repetition.value);
+            
+            // Load available models from API
+            async function loadModels() {
+                try {
+                    const response = await fetch('https://text.pollinations.ai/models');
+                    if (!response.ok) {
+                        throw new Error(`Failed to load models: HTTP ${response.status}`);
+                    }
+                    const models = await response.json();
+                    return models;
+                } catch (error) {
+                    console.error('Failed to load models:', error);
+                    errorMessage.textContent = `Error loading models: ${error.message}`;
+                    return [];
+                }
+            }
+            
+            // Populate model dropdown
+            async function populateModelDropdown() {
+                const models = await loadModels();
+                modelSelect.innerHTML = '';
+                
+                if (models.length === 0) {
+                    modelSelect.innerHTML = '<option value="">No models available</option>';
+                    addMessage('bot', "Failed to load models. Please check your connection and try again.");
+                    return [];
+                }
+                
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.description || model.name;
+                    modelSelect.appendChild(option);
+                });
+                
+                modelSelect.disabled = false;
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                
+                // Update model info when selection changes
+                modelSelect.addEventListener('change', function() {
+                    const selectedModel = models.find(m => m.name === this.value);
+                    if (selectedModel) {
+                        let info = `Provider: ${selectedModel.provider || 'N/A'}`;
+                        if (selectedModel.input_modalities) {
+                            info += ` | Input: ${selectedModel.input_modalities.join(', ')}`;
+                        }
+                        if (selectedModel.output_modalities) {
+                            info += ` | Output: ${selectedModel.output_modalities.join(', ')}`;
+                        }
+                        modelDescription.textContent = info;
+                    } else {
+                        modelDescription.textContent = '';
+                    }
+                });
+                
+                // Trigger initial update
+                if (modelSelect.value) {
+                    modelSelect.dispatchEvent(new Event('change'));
+                }
+                
+                return models;
+            }
+            
+            // Add message to chat
+            function addMessage(sender, text) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message');
+                messageDiv.classList.add(sender + '-message');
+                messageDiv.textContent = text;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+            
+            // Get response from Pollination.ai
+            async function getBotResponse(prompt, modelName) {
+                errorMessage.textContent = '';
+                sendButton.disabled = true;
+                sendButton.textContent = 'Generating...';
+                
+                try {
+                    const response = await fetch('https://text.pollinations.ai/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            prompt: prompt,
+                            model: modelName,
+                            parameters: {
+                                temperature: parseFloat(temperature.value),
+                                max_length: parseInt(maxLength.value),
+                                top_p: parseFloat(topP.value),
+                                repetition_penalty: parseFloat(repetition.value),
+                                seed: Math.floor(Math.random() * 10000),
+                                do_sample: true
+                            }
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.message || `API Error: HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Handle different response formats
+                    if (data.text) {
+                        return data.text;
+                    } else if (data.generations && data.generations[0] && data.generations[0].text) {
+                        return data.generations[0].text;
+                    } else if (typeof data === 'string') {
+                        return data;
+                    } else {
+                        console.log('API Response:', data);
+                        return "Received response but couldn't extract text content";
+                    }
+                } catch (error) {
+                    console.error('API Error:', error);
+                    errorMessage.textContent = `Error: ${error.message}`;
+                    return `Sorry, there was an error: ${error.message}`;
+                } finally {
+                    sendButton.disabled = false;
+                    sendButton.textContent = 'Generate';
+                }
+            }
+            
+            // Send button event listener
+            sendButton.addEventListener('click', async function() {
+                const message = userInput.value.trim();
+                if (message && modelSelect.value) {
+                    addMessage('user', message);
+                    userInput.value = '';
+                    
+                    // Show loading indicator
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.classList.add('message', 'bot-message');
+                    loadingDiv.innerHTML = '<div class="loading"></div> Generating response...';
+                    chatMessages.appendChild(loadingDiv);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    // Get bot response
+                    const botResponse = await getBotResponse(message, modelSelect.value);
+                    
+                    // Remove loading and show response
+                    chatMessages.removeChild(loadingDiv);
+                    addMessage('bot', botResponse);
+                }
+            });
+            
+            // Handle Enter key
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendButton.click();
+                }
+            });
+            
+            // Initialize the app
+            try {
+                const models = await populateModelDropdown();
+                addMessage('bot', "Welcome to Pollination.ai Text Generator! Select a model and enter your prompt.");
+                
+                if (models.length > 0) {
+                    addMessage('bot', `Loaded ${models.length} models ready for use.`);
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                addMessage('bot', "Failed to initialize the application. Please check console for details.");
+            }
+        });
+    </script>
+</body>
+</html>
